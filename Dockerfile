@@ -1,44 +1,38 @@
-# Stage 1: Build the Flutter Web app
+# Stage 1: Build Flutter Web app
 FROM debian:bullseye-slim AS build
 
-# Install required packages
 RUN apt-get update && apt-get install -y \
     git curl unzip xz-utils zip libglu1-mesa openjdk-11-jdk \
     && rm -rf /var/lib/apt/lists/*
 
-# Set environment variables
 ENV FLUTTER_HOME=/flutter
 ENV PATH="$FLUTTER_HOME/bin:$PATH"
 
-# Install Flutter SDK
 RUN git clone https://github.com/flutter/flutter.git $FLUTTER_HOME \
     && flutter doctor \
     && flutter config --enable-web \
     && flutter upgrade
 
-# Set working directory
 WORKDIR /app
-
-# Copy pubspec files and get dependencies
 COPY pubspec.* ./
 RUN flutter pub get
-
-# Copy app source code and build
 COPY . .
 RUN flutter build web --release
 
-# Stage 2: Serve with NGINX
-FROM nginx:alpine
+# Stage 2: Use an unprivileged NGINX base image
+FROM nginxinc/nginx-unprivileged:stable-alpine
 
-# Clear default nginx content
+# Remove default files
 RUN rm -rf /usr/share/nginx/html/*
 
-# Copy Flutter web build
+# Copy built app
 COPY --from=build /app/build/web /usr/share/nginx/html
 
-# Copy custom nginx config
+# Custom nginx config (optional)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+# Use the unprivileged port
+EXPOSE 8080
 
+# Start NGINX as non-root
 CMD ["nginx", "-g", "daemon off;"]
