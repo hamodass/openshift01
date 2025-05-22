@@ -1,39 +1,42 @@
 # Stage 1: Build the Flutter Web app
-FROM dart:stable AS build
+FROM debian:bullseye-slim AS build
 
-# Install Flutter SDK
-RUN git clone https://github.com/flutter/flutter.git /flutter \
-    && flutter/bin/flutter --version
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    git curl unzip xz-utils zip libglu1-mesa openjdk-11-jdk \
+    && rm -rf /var/lib/apt/lists/*
 
-# Add Flutter to PATH
-ENV PATH="/flutter/bin:/flutter/bin/cache/dart-sdk/bin:${PATH}"
+# Set environment variables
+ENV FLUTTER_HOME=/flutter
+ENV PATH="$FLUTTER_HOME/bin:$PATH"
 
-# Enable web support
-RUN flutter config --enable-web
+# Clone Flutter SDK and enable web
+RUN git clone https://github.com/flutter/flutter.git $FLUTTER_HOME \
+    && flutter doctor \
+    && flutter config --enable-web \
+    && flutter upgrade
 
 # Pre-download dependencies
 WORKDIR /app
 COPY pubspec.* ./
 RUN flutter pub get
 
-# Copy source and build web app
+# Copy the entire app and build
 COPY . .
 RUN flutter build web --release
 
-# Stage 2: Serve the app with NGINX
+# Stage 2: Serve the app using NGINX
 FROM nginx:alpine
 
-# Remove default nginx site
+# Remove default site
 RUN rm -rf /usr/share/nginx/html/*
 
-# Copy build output to nginx directory
+# Copy build output from previous stage
 COPY --from=build /app/build/web /usr/share/nginx/html
 
-# Copy custom nginx config (optional, see below)
+# Optional: Custom NGINX config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Expose port
 EXPOSE 80
 
-# Start nginx
 CMD ["nginx", "-g", "daemon off;"]
